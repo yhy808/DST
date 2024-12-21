@@ -1,0 +1,484 @@
+---
+title: "eda-q5"
+author: "Jeffrey Emmons"
+date: "2023-04-17"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(tidyverse)
+library(modelr)
+library(tmap)
+```
+
+```{r}
+dlst <- read.csv("data/dlst_red.csv")
+```
+
+```{r}
+head(dlst)
+```
+```{r}
+problems(dlst)
+```
+
+```{r}
+ggplot(dlst, aes(doy, all_accid)) + geom_point(aes(color = factor(year)))
+```
+
+```{r}
+within_range <- function(date, start = -14, end = 14) {
+  year <- format(date, "%Y")
+  if (year == "2012") {
+    dst_dates <- as.Date(c("2012-03-25", "2012-10-28"))
+    within <- (date <= dst_dates[1] + end && date >= dst_dates[1] + start) || (date <= dst_dates[2] + end && date >= dst_dates[2] + start)
+    ifelse(within, 1, 0)
+  } else if (year == "2013") {
+    dst_dates <- as.Date(c("2013-03-31", "2013-10-27"))
+    within <- (date <= dst_dates[1] + end && date >= dst_dates[1] + start) || (date <= dst_dates[2] + end && date >= dst_dates[2] + start)
+    ifelse(within, 1, 0)
+  } else if (year == "2014") {
+    dst_dates <- as.Date(c("2014-03-30", "2014-10-26"))
+    within <- (date <= dst_dates[1] + end && date >= dst_dates[1] + start) || (date <= dst_dates[2] + end && date >= dst_dates[2] + start)
+    ifelse(within, 1, 0)
+  } else if (year == "2015") {
+    dst_dates <- as.Date(c("2015-03-29", "2015-10-25"))
+    within <- (date <= dst_dates[1] + end && date >= dst_dates[1] + start) || (date <= dst_dates[2] + end && date >= dst_dates[2] + start)
+    ifelse(within, 1, 0)
+  } else if (year == "2016") {
+    dst_dates <- as.Date(c("2016-03-27", "2016-10-30"))
+    within <- (date <= dst_dates[1] + end && date >= dst_dates[1] + start) || (date <= dst_dates[2] + end && date >= dst_dates[2] + start)
+    ifelse(within, 1, 0)
+  } else {
+    dst_dates <- as.Date(c("2017-03-26", "2017-10-29"))
+    within <- (date <= dst_dates[1] + end && date >= dst_dates[1] + start) || (date <= dst_dates[2] + end && date >= dst_dates[2] + start)
+    ifelse(within, 1, 0)
+  }
+}
+
+within_v <- Vectorize(within_range)
+```
+
+## Creating binary variable
+Within two weeks before or after:
+```{r}
+dlst2 <- dlst %>% 
+  mutate(date_f = as.Date(date), within_two_wks = within_v(date_f))
+```
+
+```{r}
+ggplot(dlst2, aes(factor(within_two_wks), all_accid)) + geom_boxplot()
+```
+```{r}
+ggplot(dlst2, aes(doy, all_accid)) + geom_point(aes(color = factor(within_two_wks)), alpha=0.3) + facet_wrap(~year)
+```
+```{r}
+dlst_long <- dlst2 %>%
+  pivot_longer(cols = u25_accid:slight_accid, names_to = "accid_type", values_to = "count")
+```
+
+```{r}
+ggplot(dlst_long, aes(doy, count)) + geom_point(aes(color = factor(within_two_wks)), alpha=0.3) + facet_wrap(~accid_type)
+```
+```{r}
+ggplot(dlst2, aes(doy, all_accid)) + geom_point(aes(color = factor(within_two_wks)), alpha=0.3) +
+  geom_smooth(aes(color = year), se=FALSE)
+```
+
+## Examine month after DST switch
+```{r}
+dlst3 <- dlst %>% 
+  mutate(date_f = as.Date(date), one_month_after = within_v(date_f, 0, 30))
+```
+
+```{r}
+ggplot(dlst3, aes(doy, all_accid)) + geom_point(aes(color = factor(one_month_after)), alpha=0.3)
+```
+```{r}
+ggplot(dlst3, aes(doy, all_accid)) + geom_point(aes(color = factor(one_month_after)), alpha=0.3) + facet_wrap(~year)
+```
+```{r}
+dlst3_long <- dlst3 %>% pivot_longer(cols = u25_accid:slight_accid, names_to = "type", values_to = "count")
+```
+
+
+```{r}
+dlst3_long %>% filter(type %in% c("u25_accid", "o25u45_accid", "o45u65_accid", "o65_accid")) %>% 
+  ggplot(aes(doy, count)) + geom_point(aes(color = factor(one_month_after)), alpha=0.3) + facet_wrap(~type)
+```
+```{r}
+dlst3_long %>% filter(type %in% c("ped_accid", "ped_u45_accid", "ped_o45_accid")) %>% 
+  ggplot(aes(doy, count)) + geom_point(aes(color = factor(one_month_after)), alpha=0.3) + facet_wrap(~type)
+```
+```{r}
+dlst3_long %>% filter(type %in% c("fat_accid", "ser_accid", "slight_accid")) %>% 
+  ggplot(aes(doy, count)) + geom_point(aes(color = factor(one_month_after)), alpha=0.3) + facet_wrap(~type)
+```
+
+
+```{r}
+ggplot(dlst3, aes(factor(one_month_after), all_accid)) + geom_boxplot()
+```
+```{r}
+mdl <- lm(all_accid ~ one_month_after, data=dlst3)
+summary(mdl)
+```
+```{r}
+dlst3 %>% 
+  group_by(one_month_after) %>% 
+  summarize(mu = mean(all_accid), sig = sd(all_accid))
+```
+
+```{r}
+in_month_after <- dlst3 %>% filter(one_month_after == 1)
+ima_vals <- in_month_after$all_accid
+```
+
+```{r}
+(t_stat <- (0.9636505	 - 0.9126154) / (3.428043	/ sqrt(length(ima_vals))))
+```
+```{r}
+qt(1 - 0.05, length(ima_vals) - 1)
+```
+```{r}
+ 1 - pt(5.724832, length(ima_vals) - 1)
+```
+```{r}
+t.test(ima_vals, mu = 0.9126154, alternative = "greater")
+```
+```{r}
+not_month_after <- dlst3 %>% filter(one_month_after == 0)
+noma_vals <- not_month_after$all_accid
+```
+
+```{r}
+t.test(ima_vals, noma_vals, var.equal = FALSE)
+```
+
+## Compare two weeks before with two weeks after
+```{r}
+before_v_after <- function(date, start = -14, end = 14) {
+  year <- format(date, "%Y")
+  if (year == "2012") {
+    dst_dates <- as.Date(c("2012-03-25", "2012-10-28"))
+  } else if (year == "2013") {
+    dst_dates <- as.Date(c("2013-03-31", "2013-10-27"))
+  } else if (year == "2014") {
+    dst_dates <- as.Date(c("2014-03-30", "2014-10-26"))
+  } else if (year == "2015") {
+    dst_dates <- as.Date(c("2015-03-29", "2015-10-25"))
+  } else if (year == "2016") {
+    dst_dates <- as.Date(c("2016-03-27", "2016-10-30"))
+  } else {
+    dst_dates <- as.Date(c("2017-03-26", "2017-10-29"))
+  }
+  before1 <- (date < dst_dates[1] && date >= dst_dates[1] + start)
+  before2 <- (date < dst_dates[2] && date >= dst_dates[2] + start)
+  after1 <- (date <= dst_dates[1] + end && date >= dst_dates[1])
+  after2 <- (date <= dst_dates[2] + end && date >= dst_dates[2])
+  ifelse(before1, 1, ifelse(before2, 3, ifelse(after1, 2, ifelse(after2, 4, 0))))
+}
+
+b_a_v <- Vectorize(before_v_after)
+```
+
+```{r}
+dlst4 <- dlst %>% 
+  mutate(date_f = as.Date(date), where_two_weeks = b_a_v(date_f))
+```
+
+```{r}
+dlst4 %>% filter(where_two_weeks == 1 | where_two_weeks == 2) %>% 
+  ggplot(aes(doy, all_accid)) + geom_point(aes(color = factor(where_two_weeks)), alpha=0.7) +
+  ggtitle("Accidents by Day", subtitle = "Before vs. After Start of DST") +
+  xlab("Day of Year") + ylab("Number of Accidents") +
+  scale_color_manual(values = c("#00abbf", "#f4d000"), name = "Within Two Weeks...", labels = c("Before", "After"))
+
+dlst4 %>% filter(where_two_weeks == 3 | where_two_weeks == 4) %>% 
+  ggplot(aes(doy, all_accid)) + geom_point(aes(color = factor(where_two_weeks)), alpha=0.7) +
+  ggtitle("Accidents by Day", subtitle = "Before vs. After End of DST") +
+  xlab("Day of Year") + ylab("Number of Accidents") +
+  scale_color_manual(values = c("#00abbf", "#f4d000"), name = "Within Two Weeks...", labels = c("Before", "After"))
+```
+```{r}
+dlst4_long <- dlst4 %>% pivot_longer(cols = u25_accid:slight_accid, names_to = "type", values_to = "count")
+```
+
+
+```{r}
+dlst4_long %>% filter(where_two_weeks == 1 | where_two_weeks == 2) %>% 
+  filter(type %in% c("u25_accid", "o25u45_accid", "o45u65_accid", "o65_accid")) %>% 
+  ggplot(aes(doy, count)) + geom_point(aes(color = factor(where_two_weeks)), alpha=0.7) + facet_wrap(~type) +
+  ggtitle("Accidents by Day and Age Group", subtitle = "Before vs. After Start of DST") +
+  xlab("Day of Year") + ylab("Number of Accidents") +
+  scale_color_manual(values = c("#00abbf", "#f4d000"), name = "Within Two Weeks...", labels = c("Before", "After"))
+
+dlst4_long %>% filter(where_two_weeks == 3 | where_two_weeks == 4) %>% 
+  filter(type %in% c("u25_accid", "o25u45_accid", "o45u65_accid", "o65_accid")) %>% 
+  ggplot(aes(doy, count)) + geom_point(aes(color = factor(where_two_weeks)), alpha=0.7) + facet_wrap(~type) +
+  ggtitle("Accidents by Day and Age Group", subtitle = "Before vs. After End of DST") +
+  xlab("Day of Year") + ylab("Number of Accidents") +
+  scale_color_manual(values = c("#00abbf", "#f4d000"), name = "Within Two Weeks...", labels = c("Before", "After"))
+```
+```{r}
+dlst4 %>% filter(where_two_weeks == 1 | where_two_weeks == 2) %>% 
+  ggplot(aes(doy, all_accid)) + geom_point(aes(color = factor(where_two_weeks)), alpha=0.7) + facet_wrap(~year) +
+  ggtitle("Accidents by Day and Year", subtitle = "Before vs. After Start of DST") +
+  xlab("Day of Year") + ylab("Number of Accidents") +
+  scale_color_manual(values = c("#00abbf", "#f4d000"), name = "Within Two Weeks...", labels = c("Before", "After"))
+
+dlst4 %>% filter(where_two_weeks == 3 | where_two_weeks == 4) %>% 
+  ggplot(aes(doy, all_accid)) + geom_point(aes(color = factor(where_two_weeks)), alpha=0.5) + facet_wrap(~year) +
+  ggtitle("Accidents by Day and Year", subtitle = "Before vs. After End of DST") +
+  xlab("Day of Year") + ylab("Number of Accidents") +
+  scale_color_manual(values = c("#00abbf", "#f4d000"), name = "Within Two Weeks...", labels = c("Before", "After"))
+```
+```{r}
+dlst4 %>% 
+  filter(where_two_weeks != 0) %>% 
+  group_by(year, where_two_weeks) %>% 
+  summarize(total = sum(all_accid)) %>% 
+  ungroup() %>% 
+  mutate(mean = total / (15 - (where_two_weeks %% 2)))
+```
+```{r}
+dlst4 %>% 
+  filter(where_two_weeks != 0) %>% 
+  group_by(where_two_weeks, date) %>% 
+  summarize(total = sum(all_accid)) %>% 
+  ungroup() %>% 
+  group_by(where_two_weeks) %>% 
+  summarize(mean_acc = mean(total), stdev = sd(total))
+```
+
+T-tests:
+```{r}
+(t_stat_b <- (349.1556 - 369.3095) / (59.55564 / sqrt(6 * 15)))
+```
+```{r}
+pt(t_stat_b, (6 * 15) - 1)
+```
+```{r}
+pt(t_stat_b, (6 * 15) - 1) + pt(-1*t_stat_b, (6 * 15) - 1, lower.tail = FALSE)
+```
+
+
+```{r}
+(t_stat_a <- (419.8111 - 391.4286) / (72.92738 / sqrt(6 * 15)))
+```
+```{r}
+pt(t_stat_a, (6 * 15) - 1, lower.tail = FALSE)
+```
+```{r}
+pt(t_stat_a, (6 * 15) - 1, lower.tail = FALSE) + pt(-1*t_stat_a, (6 * 15) - 1)
+```
+
+
+
+```{r}
+bef_start <- dlst4 %>% filter(where_two_weeks == 1) %>% 
+  group_by(date) %>% 
+  summarize(total = sum(all_accid))
+bef_st_vals <- bef_start$total
+
+aft_start <- dlst4 %>% filter(where_two_weeks == 2) %>% 
+  group_by(date) %>% 
+  summarize(total = sum(all_accid))
+aft_st_vals <- aft_start$total
+
+t.test(bef_st_vals, aft_st_vals, var.equal = FALSE)
+```
+```{r}
+bef_end <- dlst4 %>% filter(where_two_weeks == 3) %>% 
+  group_by(date) %>% 
+  summarize(total = sum(all_accid))
+bef_end_vals <- bef_end$total
+
+aft_end <- dlst4 %>% filter(where_two_weeks == 4) %>% 
+  group_by(date) %>% 
+  summarize(total = sum(all_accid))
+aft_end_vals <- aft_end$total
+
+t.test(bef_end_vals, aft_end_vals, var.equal = FALSE)
+```
+
+
+## Make maps of differences
+```{r}
+dlst4 %>% 
+  group_by(mlong, mlat) %>% 
+  summarize(count = n())
+```
+```{r}
+# SHAPE FILE SOURCE:
+# https://www.visionofbritain.org.uk/data/
+
+library(sf)
+ew_map <- st_read("data/EW1971_admcounties/EW1971_admcounties.shp")
+scot_map <- st_read("data/S1951_scocounties/S1951_scocounties.shp")
+uk_map <- rbind(ew_map, scot_map)
+```
+```{r}
+uk_map %>% print(n = 5)
+```
+```{r}
+library(tmap)
+tm_shape(uk_map) + tm_polygons()
+```
+```{r}
+dlst_sf <- dlst4 %>% filter(where_two_weeks != 0) %>%
+  group_by(mlong, mlat, year, where_two_weeks) %>% 
+  summarize(mean_acc = mean(all_accid)) %>% 
+  ungroup() %>% 
+  pivot_wider(names_from = where_two_weeks, values_from = mean_acc) %>% 
+  mutate(mean_chg_st = `2` - `1`, mean_chg_end = `4` - `3`) %>% 
+  select(mlong, mlat, year, mean_chg_st, mean_chg_end) %>% 
+  st_as_sf(coords = c("mlong", "mlat")) %>%
+  st_set_crs(4326) %>% st_transform(27700)
+```
+
+```{r}
+mapped_acc <- uk_map %>% st_join(dlst_sf)
+```
+```{r}
+mapped_acc
+```
+
+```{r}
+mapped_as_df <- data.frame(mapped_acc)
+```
+```{r}
+mapped_as_df
+```
+```{r}
+mapped_acc %>% 
+  filter(year == 2012) %>% 
+  tm_shape() + tm_polygons(col="mean_chg_st", palette = "-RdYlGn")
+```
+```{r}
+mapped_acc %>%
+  group_by(G_UNIT, year) %>%
+  summarize(mean_chg_st_t = mean(mean_chg_st)) %>% 
+  filter(year == 2012) %>% 
+  tm_shape() + tm_polygons(col="mean_chg_st_t", palette = "-RdYlGn", n = 4)
+```
+```{r}
+tm_shape(uk_map) + tm_polygons() +
+  tm_shape(dlst_sf) + tm_symbols(size = 0.1)
+```
+```{r}
+dlst_sf_2 <- dlst4 %>% filter(where_two_weeks != 0) %>%
+  st_as_sf(coords = c("mlong", "mlat")) %>%
+  st_set_crs(4326) %>% st_transform(27700)
+  
+mapped_acc_2 <- uk_map %>% st_join(dlst_sf_2) %>% 
+  group_by(G_UNIT, year, where_two_weeks) %>% 
+  summarize(total_acc = sum(all_accid)) %>%
+  ungroup() %>% 
+  filter(!is.na(where_two_weeks)) %>% 
+  pivot_wider(names_from = "where_two_weeks", values_from = "total_acc") %>% 
+  mutate(chg_start = (`2` - `1`) / 14, chg_end = (`4` - `3`) / 14)
+  
+```
+```{r}
+range(mapped_acc_2$chg_start)
+```
+```{r}
+range(mapped_acc_2$chg_end)
+```
+```{r}
+quantile(mapped_acc_2$chg_start, prob=c(.1,.25,.5,.75,.9), type=1)
+```
+```{r}
+quantile(mapped_acc_2$chg_end, prob=c(.1,.25,.5,.75,.9), type=1)
+```
+
+
+```{r}
+col_breaks <- c(-15, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 15)
+
+mapped_acc_2 %>% 
+  filter(year == 2012) %>% 
+  tm_shape() + tm_polygons(col = "chg_start", palette = "-RdYlGn", title = "2012: Start", style = "fixed", breaks = col_breaks) + 
+  tm_layout(legend.outside = TRUE) +
+  tmap_save(filename = "start-2012.png")
+
+mapped_acc_2 %>% 
+  filter(year == 2012) %>% 
+  tm_shape() + tm_polygons(col = "chg_end", palette = "-RdYlGn", title = "2012: End", style = "fixed", breaks = col_breaks) + 
+  tm_layout(legend.outside = TRUE) +
+  tmap_save(filename = "end-2012.png")
+```
+```{r}
+mapped_acc_2 %>% 
+  filter(year == 2013) %>% 
+  tm_shape() + tm_polygons(col = "chg_start", palette = "-RdYlGn", title = "2013: Start", style = "fixed", breaks = col_breaks) + 
+  tm_layout(legend.outside = TRUE) +
+  tmap_save(filename = "start-2013.png")
+
+mapped_acc_2 %>% 
+  filter(year == 2013) %>% 
+  tm_shape() + tm_polygons(col = "chg_end", palette = "-RdYlGn", title = "2013: End", style = "fixed", breaks = col_breaks) + 
+  tm_layout(legend.outside = TRUE) +
+  tmap_save(filename = "end-2013.png")
+```
+```{r}
+mapped_acc_2 %>% 
+  filter(year == 2014) %>% 
+  tm_shape() + tm_polygons(col = "chg_start", palette = "-RdYlGn", title = "2014: Start", style = "fixed", breaks = col_breaks) + 
+  tm_layout(legend.outside = TRUE) +
+  tmap_save(filename = "start-2014.png")
+
+mapped_acc_2 %>% 
+  filter(year == 2014) %>% 
+  tm_shape() + tm_polygons(col = "chg_end", palette = "-RdYlGn", title = "2014: End", style = "fixed", breaks = col_breaks) + 
+  tm_layout(legend.outside = TRUE) +
+  tmap_save(filename = "end-2014.png")
+```
+```{r}
+mapped_acc_2 %>% 
+  filter(year == 2015) %>% 
+  tm_shape() + tm_polygons(col = "chg_start", palette = "-RdYlGn", title = "2015: Start", style = "fixed", breaks = col_breaks) + 
+  tm_layout(legend.outside = TRUE) +
+  tmap_save(filename = "start-2015.png")
+
+mapped_acc_2 %>% 
+  filter(year == 2015) %>% 
+  tm_shape() + tm_polygons(col = "chg_end", palette = "-RdYlGn", title = "2015: End", style = "fixed", breaks = col_breaks) + 
+  tm_layout(legend.outside = TRUE) +
+  tmap_save(filename = "end-2015.png")
+```
+```{r}
+mapped_acc_2 %>% 
+  filter(year == 2016) %>% 
+  tm_shape() + tm_polygons(col = "chg_start", palette = "-RdYlGn", title = "2016: Start", style = "fixed", breaks = col_breaks) + 
+  tm_layout(legend.outside = TRUE) +
+  tmap_save(filename = "start-2016.png")
+
+mapped_acc_2 %>% 
+  filter(year == 2016) %>% 
+  tm_shape() + tm_polygons(col = "chg_end", palette = "-RdYlGn", title = "2016: End", style = "fixed", breaks = col_breaks) + 
+  tm_layout(legend.outside = TRUE) +
+  tmap_save(filename = "end-2016.png")
+```
+```{r}
+mapped_acc_2 %>% 
+  filter(year == 2017) %>% 
+  tm_shape() + tm_polygons(col = "chg_start", palette = "-RdYlGn", title = "2017: Start", style = "fixed", breaks = col_breaks) + 
+  tm_layout(legend.outside = TRUE) +
+  tmap_save(filename = "start-2017.png")
+
+mapped_acc_2 %>% 
+  filter(year == 2017) %>% 
+  tm_shape() + tm_polygons(col = "chg_end", palette = "-RdYlGn", title = "2017: End", style = "fixed", breaks = col_breaks) + 
+  tm_layout(legend.outside = TRUE) +
+  tmap_save(filename = "end-2017.png")
+```
+
+
+
