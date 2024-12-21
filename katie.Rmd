@@ -1,0 +1,36 @@
+---
+title: "Katie branch"
+output: github_document
+authors: "Team tidyverse: Hongyi Yu; Jeffrey Emmons; Katie Hansen; Yuqing Yang"
+---
+
+```{r load}
+library(tidyverse)
+
+df <- read.csv("data/dlst_red.csv")
+(problems(df))
+
+df <- df %>% select(date, year, doy, dow, all_accid) %>%
+  arrange(date)
+(df)
+```
+
+```{r years-bar}
+by_yr <- df %>% group_split(year)
+(by_yr)
+
+ggplot(df, aes(x=doy, y=all_accid)) + 
+  stat_summary(geom="point", fun.y=mean, alpha=0.3) +
+  stat_smooth() +
+  facet_wrap(~ year)
+```
+
+By overlaying each year, we see that each year follows a similar trend: 
+
+
+```{r years-overlay, eval=TRUE}
+df %>% ggplot(aes(x=doy, y=all_accid)) + geom_line(aes(color=year), palette="RdYlBu", alpha = .3)
+```
+
+Since all years have a similar trend, we can pick a specific year and investigate the effects of Daylight Saving Time throughout that specific year in more detail. For example, the most recent year, 2017. 
+
