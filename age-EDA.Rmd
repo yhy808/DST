@@ -1,0 +1,90 @@
+---
+title: "Age groups EDA"
+output: github_document
+authors: "Team tidyverse: Hongyi Yu; Jeffrey Emmons; Katie Hansen; Yuqing Yang"
+---
+
+```{r load}
+library(tidyverse)
+library(lubridate)
+
+df <- read.csv("data/dlst_red.csv")
+(problems(df))
+
+colnames(df)
+
+# (df %>% filter(date == ymd("2017-03-26")))
+
+```
+
+```{r all-by-year, eval=TRUE}
+
+df_all_accid <- df %>% select(date, year, doy, dow, all_accid) %>%
+  group_by(year, doy) %>%
+  summarize(all_per_day = sum(all_accid)) 
+(df_all_accid)
+
+ggplot(df_all_accid, aes(x=doy, y=all_per_day)) +
+  stat_summary(geom="point", fun.y=mean, alpha=0.5, color="#00abbf" ) +
+  stat_smooth(col="#e83d3d") +
+  facet_wrap(~ year) +
+  ggtitle("Accidents of all Types 2012-2017")
+```
+
+By overlaying each year, we see that each year follows a similar trend: 
+
+
+
+Plotting the trend of accidents of all types of accidents over a five-year period reveals that the changes in the number of accidents are about the same every year. The average number of accidents for every day of the year is concentrated around 400. Every year, there is a very slight increase in the number of accidents at the end of the year. An analysis of the direct of effect of the change to and from Daylight Saving Time requires plotting a more specfic time frame, two weeks in our case.   
+
+
+
+```{r years-overlay, eval=FALSE}
+df %>% ggplot(aes(x=doy, y=all_accid)) + geom_line(aes(color=year), palette="RdYlBu", )
+```
+
+Since all years have a similar trend, we can pick a specific year and investigate the effects of Daylight Saving Time throughout that specific year in more detail. For example, the most recent year, 2017. 
+
+
+
+```{r 2017, eval=FALSE}
+
+df_2017 %>% ggplot(aes(x=doy, y=slight_accid)) + geom_point(aes(col="orange")) + geom_smooth()
+# df %>% ggplot(aes(x=doy, y=ser_accid)) + geom_line(aes(col="blue")) + geom_smooth()
+# df %>% ggplot(aes(x=doy, y=fat_accid)) + geom_line(aes(col="green")) + geom_smooth()
+
+#idea: do a doy shift so that the time change is at either end so the change is more noticeable
+
+```
+
+
+```{r 2017-age-groups, eval=TRUE}
+start_date <- ymd("2017-03-26") 
+end_date <- ymd("2017-10-29")
+
+df_2017 <- df %>% filter(year == 2017)
+
+u25_accid_2017 <- df_2017 %>% 
+  mutate(month = substr(date, 6, 7), 
+         dst = (date >= start_date & date < end_date),
+         dost = doy%%86 + (doy/86) * (86 + doy)) %>%
+  group_by(month, dost, dst) %>% 
+  summarize(under_25 = sum(u25_accid), over_25_under_45 = sum(o25u45_accid), 
+            over_45_under_65 = sum(o45u65_accid), over_65 = sum(o65_accid))
+
+u25_accid_2017 <- u25_accid_2017 %>% 
+  pivot_longer(cols = c(`under_25`, `over_25_under_45`, `over_45_under_65`, `over_65`),
+               names_to = "driver_age_group",
+               values_to = "num_accidents")
+
+u25_accid_2017 %>% ggplot(aes(x = dost, y = num_accidents, color = dst)) +
+  # geom_point(alpha = 0.5) +
+  labs(title = "2017 Accidents by Driver Age Group",
+       x = "Days After Time Change",
+       y = "Number of Accidents",
+       color = "During DST") +
+  stat_summary(fun.y=mean, alpha = 0.3) +
+  stat_smooth(col="#e83d3d") + 
+  facet_wrap(~ driver_age_group) +
+  scale_color_manual(values=c("#f4d000", "#00abbf")) 
+```

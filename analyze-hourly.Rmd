@@ -1,0 +1,165 @@
+---
+title: "hourly-analysis"
+author: "Jeffrey Emmons"
+date: "2023-04-26"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(modelr)
+library(tmap)
+library(sf)
+```
+```{r}
+dlst_2017 <- read.csv("data/hourly_2017.csv")
+```
+
+```{r}
+head(dlst_2017)
+```
+
+```{r}
+ggplot(dlst_2017, aes(dark, all_accid)) + geom_point(position = "jitter")
+```
+```{r}
+ggplot(dlst_2017, aes(dark)) + geom_histogram(binwidth = 0.05)
+```
+
+```{r}
+unique(dlst_2017$dark)
+```
+
+```{r}
+ggplot(dlst_2017, aes(dark)) + geom_point(aes(y=u25_accid), color="red", alpha=0.3, position = "jitter")
+```
+
+```{r}
+ggplot(dlst_2017, aes(dark)) + geom_point(aes(y=o25u45_accid), color="blue", alpha=0.3, position = "jitter")
+```
+
+```{r}
+ggplot(dlst_2017, aes(dark)) + geom_point(aes(y=o45u65_accid), color="green", alpha=0.3, position = "jitter")
+```
+
+```{r}
+ggplot(dlst_2017, aes(dark)) + geom_point(aes(y=o65_accid), color="black", alpha=0.3, position = "jitter")
+```
+
+```{r}
+ggplot(dlst_2017, aes(hour, all_accid)) + geom_point(alpha = 0.3, position = "jitter")
+```
+
+```{r}
+dlst_2017 %>% 
+  filter(dark == 0 | dark == 1) %>% 
+  group_by(dark) %>% 
+  summarize(count = n(), total_acc = sum(all_accid), average = total_acc / count)
+```
+
+```{r}
+dst_dates <- as.Date(c("2017-03-26", "2017-10-29"))
+
+bef_v_aft_hr <- function(date, start = -14, end = 14) {
+  ifelse((date < dst_dates[1] && date >= dst_dates[1] + start), 1,
+  ifelse((date < dst_dates[2] && date >= dst_dates[2] + start), 3,
+  ifelse((date <= dst_dates[1] + end && date >= dst_dates[1]), 2,
+  ifelse((date <= dst_dates[2] + end && date >= dst_dates[2]), 4, 0))))
+}
+
+ba_hr_v <- Vectorize(bef_v_aft_hr)
+```
+
+```{r}
+dlst_2017_2 <- dlst_2017 %>%
+  mutate(date_f = as.Date(date), within_two_weeks = ba_hr_v(date_f))
+```
+
+```{r}
+ggplot(dlst_2017_2, aes(hour, all_accid)) + geom_point(alpha=0.3, position="jitter") + facet_wrap(~within_two_weeks) 
+```
+```{r}
+(rates <- dlst_2017_2 %>% 
+  filter(within_two_weeks != 0) %>% 
+  group_by(within_two_weeks, hour) %>% 
+  summarize(count = n(), total_acc = sum(all_accid), avg = total_acc / (count / 265)) %>% 
+  ungroup())
+```
+```{r}
+ggplot(rates, aes(hour, total_acc)) + geom_line(aes(color = factor(within_two_weeks)), size = 1) +
+  scale_color_manual(values = c("#00abbf", "#f4d000", "#1f424c", "#E83D3D"), name = "Within two weeks...", labels = c("Before Start", "After Start", "Before End", "After End"))
+```
+```{r}
+ggplot(rates, aes(hour, avg)) + geom_line(aes(color = factor(within_two_weeks)), size = 1) +
+  ggtitle("Average Number of Accidents per Hour: 2017") + labs(subtitle = "Two Weeks Before and After DST Change") +
+  xlab("Hour of Day") + ylab("Average") +
+  scale_color_manual(values = c("#00abbf", "#f4d000", "#1f424c", "#E83D3D"), name = "Within two weeks...", labels = c("Before Start", "After Start", "Before End", "After End"))
+```
+```{r}
+library(gifski)
+library(gganimate)
+library(transformr)
+```
+
+```{r}
+library(clock)
+(rates_mth <- dlst_2017_2 %>% 
+  mutate(Month = date_month_factor(date_f)) %>% 
+  group_by(Month, hour) %>% 
+  summarize(count = n(), total_acc = sum(all_accid), avg = total_acc / (count / 265)) %>%
+  ungroup())
+```
+
+
+```{r}
+mth_anim <- ggplot(rates_mth, aes(hour, avg)) + geom_line(colour = "#00abbf", size = 1) +
+  theme(legend.position = "none") +
+  labs(title = "Average Number of Accidents per Hour: {closest_state} 2017",
+       x = "Hour of Day", y = "Average Number of Accidents") +
+  transition_states(Month, transition_length = 1, state_length = 2, wrap = FALSE) +
+  ease_aes('linear')
+
+animate(mth_anim, duration = 20, nframes = 300, width = 800, height = 600, renderer = gifski_renderer())
+anim_save("Images/acc-per-hour.gif")
+```
+
+
+```{r}
+rates_mth %>% 
+  filter(Month == "March") %>% 
+  ggplot(aes(hour, avg)) + geom_line(colour = "#00abbf", size = 1) +
+  theme(legend.position = "none") +
+  labs(title = "Average Number of Accidents per Hour: March 2017",
+       x = "Hour of Day", y = "Average Number of Accidents") +
+  ylim(0, 45)
+
+rates_mth %>% 
+  filter(Month == "April") %>% 
+  ggplot(aes(hour, avg)) + geom_line(colour = "#00abbf", size = 1) +
+  theme(legend.position = "none") +
+  labs(title = "Average Number of Accidents per Hour: April 2017",
+       x = "Hour of Day", y = "Average Number of Accidents") +
+  ylim(0, 45)
+
+rates_mth %>% 
+  filter(Month == "October") %>% 
+  ggplot(aes(hour, avg)) + geom_line(colour = "#00abbf", size = 1) +
+  theme(legend.position = "none") +
+  labs(title = "Average Number of Accidents per Hour: October 2017",
+       x = "Hour of Day", y = "Average Number of Accidents") +
+  ylim(0, 45)
+
+rates_mth %>% 
+  filter(Month == "November") %>% 
+  ggplot(aes(hour, avg)) + geom_line(colour = "#00abbf", size = 1) +
+  theme(legend.position = "none") +
+  labs(title = "Average Number of Accidents per Hour: November 2017",
+       x = "Hour of Day", y = "Average Number of Accidents") +
+  ylim(0, 45)
+```
+
+
